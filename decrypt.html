@@ -1,0 +1,105 @@
+<html>
+<head>
+	<title></title>
+	<script src="https://ajax.googleapis.com/ajax/libs/jquery/2.2.2/jquery.min.js"></script>
+	<style type="text/css">
+	#encryptedblob { width: 760px; text-align: justify; margin: 0 auto; margin-top: 20px; font-size: smaller; }
+	</style>
+</head>
+<body>
+	<div id="decryptprogress" style="text-align:center; display:none">
+		Decrypting...
+	</div>
+	<div id="passwordform" style="text-align:center;">
+		<p>
+			Enter the password: <br />
+			<input id="passphrase" type="password" /><br />
+			<input id="decryptButton" type="submit" />
+		</p>
+	</div>
+	<div id="results" style="display:none;"></div>
+
+	<script type="text/javascript">
+	var xb64decode = function(str) {
+		var raw = atob(str);
+		var rawLength = raw.length;
+		var array = new Uint8Array(new ArrayBuffer(rawLength));
+		for(i = 0; i < rawLength; i++) {
+    		array[i] = raw.charCodeAt(i);
+  		}
+  		return array;
+	};
+	var error = function(s) {
+		alert(s);
+		$('#passwordform').show();
+		$('#decryptprogress').hide();
+	}
+	var decrypt = function(password) {
+		if ((typeof password === 'string' || password instanceof String) && password.length > 0) {
+			$('#passwordform').hide();
+			$('#decryptprogress').show();
+
+			password = $('#passphrase').val()
+			var rawPassword = new TextEncoder('utf-8').encode(password);
+			window.crypto.subtle.importKey("raw", rawPassword,  { name: "PBKDF2", }, true, ["deriveKey"])
+			//-------------------------------------------------------
+			.then(function(key){
+				window.crypto.subtle.deriveKey(
+					{ "name": "PBKDF2", salt: new Uint8Array(16), //Constant zeros, on purpose.
+			        iterations: 1000, hash: {name: "SHA-512"}, },
+			    	key, { name: "AES-GCM", length: 256, }, false,  ["encrypt", "decrypt"]
+				)
+				//-------------------------------------------------------
+				.then(function(key){
+					var iv_and_ciphertext = xb64decode($('#encryptedblob').text());
+					var iv = new Uint8Array(iv_and_ciphertext.slice(0,12));
+					var ciphertext = new Uint8Array(iv_and_ciphertext.slice(12));
+
+					window.crypto.subtle.decrypt( { name: "AES-GCM", iv: iv, tagLength: 128, },
+				    	key, ciphertext 
+					)
+					//-------------------------------------------------------
+					.then(function(decrypted){
+						var plaintext = new TextDecoder('utf-8').decode(decrypted);
+						if(!plaintext.startsWith("SENTINEL")) {
+							error("Incorrect password");
+						} else {
+						    $('#encryptedblob').hide();
+						    $('#passwordform').hide();
+							$('#decryptprogress').hide();
+
+						    var newDoc = document.open("text/html", "replace");
+							newDoc.write(plaintext.substring(8));
+							newDoc.close();
+						}
+					})
+					.catch(function(err){
+						error("Incorrect password");
+						console.error("Caught an error while decrypting.")
+					    console.error(err);
+					});
+				})
+				.catch(function(err){
+					console.error("Caught an error while trying to PBKDF2 a key.")
+				    console.error(err);
+				});
+			})
+			.catch(function(err){
+				console.error("Caught an error while trying to import the password as a key.")
+				console.error(err);
+			});
+		} else {
+			error("Please enter a password");
+		}
+	};
+	$(document).ready(function() {
+		var password = document.location.hash;
+		if(password == null || password.length == 0)
+			$('#passwordform').show();
+		else {
+			decrypt(password.substring(1));
+		}
+		$('#decryptButton').click(function() { decrypt($('#passphrase').val()); });
+	});
+	</script>
+	<div id="encryptedblob" style="word-wrap: break-word;">

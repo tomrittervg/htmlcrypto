@@ -1,0 +1,82 @@
+<html>
+<head>
+	<title></title>
+	<script src="https://ajax.googleapis.com/ajax/libs/jquery/2.2.2/jquery.min.js"></script>
+	<style type="text/css">
+	body { text-align: center; vertical-align: middle }
+	#encryptedblob { width: 760px; text-align: justify; margin: 0 auto; margin-top: 20px; font-size: smaller; }
+	</style>
+</head>
+<body>
+	<div id="passwordform" style="text-align:center;">
+		<p>
+			Enter the content: <br />
+			<textarea 
+				id="plaintextcontent"
+				style="width:500px; height:200px;"></textarea>
+		</p>
+		<p>
+			Enter the password: <br />
+			<input id="passphrase" type="password" /><br />
+			<input id="encryptButton" type="submit" />
+		</p>
+		<p id="results" style="display:none;">
+			Results: <br />
+			<textarea 
+				id="ciphertext"
+				style="width:500px; height:200px;"></textarea>
+		</p>
+	</div>
+
+	<script type="text/javascript">
+	function appendBuffer( buffer1, buffer2 ) {
+		var tmp = new Uint8Array( buffer1.byteLength + buffer2.byteLength );
+		tmp.set( new Uint8Array( buffer1 ), 0 );
+		tmp.set( new Uint8Array( buffer2 ), buffer1.byteLength );
+		return tmp.buffer;
+	}
+	$(document).ready(function() {
+		$('#encryptButton').click(function() {
+			var key = $('#passphrase').val();
+			var plaintext = "SENTINEL" + $('#plaintextcontent').val();
+			var rawContent = new TextEncoder('utf-8').encode(plaintext);
+
+			var rawKey = new TextEncoder('utf-8').encode(key);
+			window.crypto.subtle.importKey("raw", rawKey,  { name: "PBKDF2", }, true, ["deriveKey"])
+			//-------------------------------------------------------
+			.then(function(key){
+				window.crypto.subtle.deriveKey(
+					{ "name": "PBKDF2", salt: new Uint8Array(16), //Constant zeros, on purpose.
+			        iterations: 1000, hash: {name: "SHA-512"}, },
+			    	key, { name: "AES-GCM", length: 256, }, false,  ["encrypt", "decrypt"]
+				)
+				//-------------------------------------------------------
+				.then(function(key){
+					var iv = window.crypto.getRandomValues(new Uint8Array(12));
+					window.crypto.subtle.encrypt( { name: "AES-GCM", iv: iv, tagLength: 128, },
+				    	key, rawContent 
+					)
+					//-------------------------------------------------------
+					.then(function(encrypted){
+					    var totalBuffer = appendBuffer(iv, encrypted);
+					    var encodedCiphertext = btoa(String.fromCharCode.apply(null, new Uint8Array(totalBuffer)));
+					    $('#ciphertext').val(encodedCiphertext);
+					    $('#results').show();
+					})
+					.catch(function(err){
+						console.error("Caught an error while encrypting.")
+					    console.error(err);
+					});
+				})
+				.catch(function(err){
+					console.error("Caught an error while trying to PBKDF2 a key.")
+				    console.error(err);
+				});
+			})
+			.catch(function(err){
+				console.error("Caught an error while trying to impoer the password as a key.")
+				console.error(err);
+			});
+		});
+	});
+	</script>
