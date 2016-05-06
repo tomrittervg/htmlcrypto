@@ -39,7 +39,6 @@
 			$('#passwordform').hide();
 			$('#decryptprogress').show();
 
-			password = $('#passphrase').val()
 			var rawPassword = new TextEncoder('utf-8').encode(password);
 			window.crypto.subtle.importKey("raw", rawPassword,  { name: "PBKDF2", }, true, ["deriveKey"])
 			//-------------------------------------------------------
