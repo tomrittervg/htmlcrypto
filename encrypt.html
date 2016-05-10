@@ -2,6 +2,7 @@
 <head>
 	<title></title>
 	<script src="https://ajax.googleapis.com/ajax/libs/jquery/2.2.2/jquery.min.js"></script>
+	<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.0.0/jszip.min.js"></script>
 	<style type="text/css">
 	body { text-align: center; vertical-align: middle }
 	#encryptedblob { width: 760px; text-align: justify; margin: 0 auto; margin-top: 20px; font-size: smaller; }
@@ -39,7 +40,6 @@
 		$('#encryptButton').click(function() {
 			var key = $('#passphrase').val();
 			var plaintext = "SENTINEL" + $('#plaintextcontent').val();
-			var rawContent = new TextEncoder('utf-8').encode(plaintext);
 
 			var rawKey = new TextEncoder('utf-8').encode(key);
 			window.crypto.subtle.importKey("raw", rawKey,  { name: "PBKDF2", }, true, ["deriveKey"])
@@ -52,20 +52,27 @@
 				)
 				//-------------------------------------------------------
 				.then(function(key){
-					var iv = window.crypto.getRandomValues(new Uint8Array(12));
-					window.crypto.subtle.encrypt( { name: "AES-GCM", iv: iv, tagLength: 128, },
-				    	key, rawContent 
-					)
-					//-------------------------------------------------------
-					.then(function(encrypted){
-					    var totalBuffer = appendBuffer(iv, encrypted);
-					    var encodedCiphertext = btoa(String.fromCharCode.apply(null, new Uint8Array(totalBuffer)));
-					    $('#ciphertext').val(encodedCiphertext);
-					    $('#results').show();
-					})
-					.catch(function(err){
-						console.error("Caught an error while encrypting.")
-					    console.error(err);
+					console.log("Uncompressed length: " + plaintext.length);
+					var zip = new JSZip();
+					zip.file("data", plaintext);
+					zip.generateAsync({type:"uint8array", compression:"DEFLATE", compressionOptions : {level:6}})
+					.then(function(content) {
+						console.log("Compressed length: " + content.length);
+						var iv = window.crypto.getRandomValues(new Uint8Array(12));
+						window.crypto.subtle.encrypt( { name: "AES-GCM", iv: iv, tagLength: 128, },
+					    	key, content
+						)
+						//-------------------------------------------------------
+						.then(function(encrypted){
+						    var totalBuffer = appendBuffer(iv, encrypted);
+						    var encodedCiphertext = btoa(String.fromCharCode.apply(null, new Uint8Array(totalBuffer)));
+						    $('#ciphertext').val(encodedCiphertext);
+						    $('#results').show();
+						})
+						.catch(function(err){
+							console.error("Caught an error while encrypting.")
+						    console.error(err);
+						});
 					});
 				})
 				.catch(function(err){
